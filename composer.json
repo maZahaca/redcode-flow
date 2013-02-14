@@ -1,0 +1,21 @@
+{
+    "name": "redcode/transaction-flow",
+    "autoload": { "psr-0": { "RedCode": "src/" } },
+    "description": "Simple flow manager, process entities by flows (status)",
+    "keywords": ["Flow", "Status", "Symfony"],
+    "homepage": "https://github.com/maZahaca/redcode-flow",
+    "authors": [
+        {
+            "name": "Andrew Reddikh",
+            "email": "mazahaco@gmail.com",
+            "homepage": "https://github.com/maZahaca"
+        }
+    ],
+    "require": {
+        "php": ">=5.4.4",
+        "symfony/framework-bundle": ">=2.0,<2.3-dev"
+    },
+    "autoload": {
+        "psr-0": { "RedCode\\Flow": "src/" }
+    }
+}
