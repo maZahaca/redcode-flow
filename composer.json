@@ -1,5 +1,5 @@
 {
-    "name": "redcode/transaction-flow",
+    "name": "redcode/flow",
     "autoload": { "psr-0": { "RedCode": "src/" } },
     "description": "Simple flow manager, process entities by flows (status)",
     "keywords": ["Flow", "Status", "Symfony"],
