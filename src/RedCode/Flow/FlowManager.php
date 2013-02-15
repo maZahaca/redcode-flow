@@ -5,6 +5,7 @@
 namespace RedCode\Flow;
 
 use Doctrine\ORM\EntityManager;
+use RedCode\Flow\Item\EmptyFlow;
 use RedCode\Flow\Annotation\Status\StatusEntity;
 use RedCode\Flow\Annotation\Status\StatusValue;
 use RedCode\Flow\Annotation\Reader;
@@ -56,7 +57,7 @@ class FlowManager
             if($found) {
                 $this->field = $found;
 
-                $found = $reader->getMappedEntityFields($class, current($found), StatusValue::className());
+                $found = $reader->getMappedEntityFields($class, $found, StatusValue::className());
                 $found = (bool)count($found);
                 if(!$found) {
                     throw new \Exception('You must set annotation ' . StatusValue::className() . ' in mapped status entity');
@@ -69,6 +70,9 @@ class FlowManager
                 throw new \Exception('You must set annotation ' . StatusValue::className() . ' to status field in ' . $class);
             }
         } else {
+            if($reader->isFieldReference($class, $found)) {
+                throw new \Exception('Status field is reference. You must set annotation ' . StatusEntity::className() . ' to status field in ' . $class);
+            }
             $this->field = $found;
         }
 

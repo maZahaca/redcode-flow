@@ -4,7 +4,7 @@
  */
 namespace RedCode\Flow\Annotation;
 
-use Doctrine\Common\Annotations\AnnotationReader;
+use Doctrine\Common\Annotations\Reader as IAnnotationsReader;
 use Doctrine\ORM\EntityManager;
 
 /**
@@ -18,7 +18,7 @@ class Reader
 
     static private $reflected = array();
 
-    public function __construct(AnnotationReader $annotationReader, EntityManager $entityManager)
+    public function __construct(IAnnotationsReader $annotationReader, EntityManager $entityManager)
     {
         $this->annotationReader = $annotationReader;
         $this->entityManager    = $entityManager;
@@ -54,23 +54,45 @@ class Reader
     /**
      * Get fields with annotation
      * @param object|string $object Some object of class
-     * @param string $annotation annotation class string
+     * @param string|string[] $annotation annotation class string or array of annotations
      * @return array fields with annotation
      */
     public function getFields($object, $annotation)
     {
+        if(is_string($annotation))
+            $annotation = array ($annotation);
+
         $fields = array();
         /** @var $reflectionProperty \ReflectionProperty */
         foreach($this->getReflection($object)->getProperties(\ReflectionProperty::IS_PRIVATE | \ReflectionProperty::IS_PROTECTED | \ReflectionProperty::IS_PUBLIC) as $reflectionProperty) {
             $annotations = $this->annotationReader->getPropertyAnnotations($reflectionProperty);
             foreach ($annotations as $annotationType) {
-                if(preg_match('/' . $annotation . '/u', get_class($annotationType))) {
-                    $fields[] = $reflectionProperty->getName();
+                foreach($annotation as $annot) {
+                    if(ltrim($annot, "\\") == get_class($annotationType)) {
+                        if(!in_array($reflectionProperty->getName(), $fields)) {
+                            $fields[] = $reflectionProperty->getName();
+                        }
+                    }
                 }
             }
         }
 
         return $fields;
+    }
+
+    public function isFieldReference($object, $field)
+    {
+        $found = $this->getFields(
+            $object,
+            array(
+                'Doctrine\ORM\Mapping\OneToOne',
+                'Doctrine\ORM\Mapping\OneToMany',
+                'Doctrine\ORM\Mapping\ManyToOne',
+                'Doctrine\ORM\Mapping\ManyToMany'
+            )
+        );
+        $found = current($found);
+        return $found == $field;
     }
 
     /**
