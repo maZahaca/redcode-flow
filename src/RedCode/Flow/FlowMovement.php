@@ -8,10 +8,17 @@ namespace RedCode\Flow;
 
 class FlowMovement
 {
+    /**
+     * @var string|object
+     */
     private $from;
+
+    /**
+     * @var string|object
+     */
     private $to;
 
-    public function __construct($from = '', $to = '')
+    public function __construct($from = null, $to = null)
     {
         $this->from = $from;
         $this->to = $to;
@@ -22,21 +29,17 @@ class FlowMovement
         return "{$this->from}-{$this->to}";
     }
 
-    public function setFrom($from)
-    {
-        $this->from = $from;
-    }
-
+    /**
+     * @return object|string
+     */
     public function getFrom()
     {
         return $this->from;
     }
 
-    public function setTo($to)
-    {
-        $this->to = $to;
-    }
-
+    /**
+     * @return object|string
+     */
     public function getTo()
     {
         return $this->to;

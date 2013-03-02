@@ -11,14 +11,20 @@ interface IFlow
     /**
      * Execute actions on entity by current flow
      * @param object $entity
-     * @param FlowMovement $movement
+     * @param \RedCode\Flow\FlowMovement $movement
      * @return object $entity
      */
-    public function execute($entity, FlowMovement $movement);
+    public function execute($entity, \RedCode\Flow\FlowMovement $movement);
 
     /**
      * Get allowed movement for flow
-     * @return array
+     * @return \RedCode\Flow\FlowMovement[]
      */
     public function getMovements();
+
+    /**
+     * Get user roles allowed to execute flow
+     * @return array|bool
+     */
+    public function getRoles();
 }

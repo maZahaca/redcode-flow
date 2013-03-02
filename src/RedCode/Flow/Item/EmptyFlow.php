@@ -4,13 +4,17 @@
  */
 namespace RedCode\Flow\Item;
 
+use RedCode\Flow\FlowMovement;
+
 class EmptyFlow extends BaseFlow
 {
+    public function __construct()
+    {
+        $this->roles = false;
+    }
+
     /**
-     * Execute actions on entity by current flow
-     * @param object $entity
-     * @param FlowMovement $movement
-     * @return object $entity
+     * @inheritDoc
      */
     public function execute($entity, FlowMovement $movement)
     {

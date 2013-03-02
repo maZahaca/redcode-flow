@@ -4,8 +4,7 @@
  */
 namespace RedCode\Flow\Item;
 
-use Doctrine\ORM\EntityManager;
-use RedCode\Flow\Annotation\Reader;
+use RedCode\Flow\FlowMovement;
 
 abstract class BaseFlow implements IFlow
 {
@@ -14,6 +13,11 @@ abstract class BaseFlow implements IFlow
      * @var array
      */
     protected $movements = array ();
+
+    /**
+     * @var array|bool
+     */
+    protected $roles = array ();
 
     public function getMovements()
     {
@@ -26,5 +30,13 @@ abstract class BaseFlow implements IFlow
     protected function setMovements($movements)
     {
         $this->movements = $movements;
+    }
+
+    /**
+     * @return array|bool
+     */
+    public function getRoles()
+    {
+        return $this->roles;
     }
 }

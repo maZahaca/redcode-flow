@@ -5,10 +5,14 @@
 namespace RedCode\Flow;
 
 use Doctrine\ORM\EntityManager;
+use RedCode\Flow\Item\IFlow;
+use Symfony\Component\Security\Core\Exception\AccessDeniedException;
+use Symfony\Component\Security\Core\SecurityContext;
 use RedCode\Flow\Item\EmptyFlow;
 use RedCode\Flow\Annotation\Status\StatusEntity;
 use RedCode\Flow\Annotation\Status\StatusValue;
 use RedCode\Flow\Annotation\Reader;
+
 
 class FlowManager
 {
@@ -25,7 +29,7 @@ class FlowManager
     /**
      * @var EntityManager
      */
-    private $em;
+    protected $em;
 
     /**
      * @var string
@@ -42,10 +46,41 @@ class FlowManager
      */
     private $mappedEntityField = null;
 
-    public function __construct(EntityManager $em, Reader $reader, $class, $flows = array ())
+    /**
+     * @var string|null
+     */
+    private $mappedEntity = null;
+
+    /**
+     * @var \Closure
+     */
+    private $getStatusNameFunction;
+
+    /**
+     * @var array
+     */
+    private $entityMovements = array();
+
+    /**
+     * @var \Symfony\Component\Security\Core\SecurityContext
+     */
+    protected $securityContext;
+
+    /**
+     * @param \Symfony\Component\Security\Core\SecurityContext $securityContext
+     * @param \Doctrine\ORM\EntityManager $em
+     * @param Annotation\Reader $reader
+     * @param string $class
+     * @param \RedCode\Flow\Item\IFlow[] $flows
+     * @param \Closure $getStatusNameFunction
+     * @throws \Exception
+     */
+    public function __construct(SecurityContext $securityContext, EntityManager $em, Reader $reader, $class, $flows = array (), \Closure $getStatusNameFunction = null)
     {
+        $this->securityContext = $securityContext;
         $this->em = $em;
         $this->class    = ltrim($class, "\\");
+        $this->getStatusNameFunction = $getStatusNameFunction;
 
         $found = $reader->getFields($class, StatusValue::className());
         $found = current($found);
@@ -58,11 +93,12 @@ class FlowManager
                 $this->field = $found;
 
                 $found = $reader->getMappedEntityFields($class, $found, StatusValue::className());
-                $found = (bool)count($found);
+                $found = current($found);
                 if(!$found) {
                     throw new \Exception('You must set annotation ' . StatusValue::className() . ' in mapped status entity');
                 }
                 else {
+                    $this->mappedEntity = $reader->getMappedEntityClass($class, $this->field);
                     $this->mappedEntityField = $found;
                 }
             }
@@ -96,6 +132,7 @@ class FlowManager
     /**
      * Get executive flow
      * @param object $entity
+     * @throws \Exception
      * @return IFlow
      */
     public function getFlow($entity)
@@ -103,7 +140,10 @@ class FlowManager
         $movement = $this->getMovement($entity);
         if(array_key_exists((string)$movement, $this->allowMovements))
             return $this->allowMovements[(string)$movement];
-        return $this->allowMovements['empty'];
+        if((string)$movement->getFrom() == (string)$movement->getTo()) {
+            return $this->allowMovements['empty'];
+        }
+        throw new \Exception("Status movement from {$movement->getFrom()} to {$movement->getTo()} unsupported");
     }
 
     /**
@@ -113,41 +153,56 @@ class FlowManager
     public function getMovement($entity)
     {
         $this->validateEntity($entity);
+        $from = $to = null;
+        $entityId = spl_object_hash($entity);
 
-        $movement = new FlowMovement();
-        if($entity->getId()) {
-            $qb = $this->em->createQueryBuilder();
+        if(!isset($this->entityMovements[$entityId])) {
+            if($entity->getId()) {
+                $qb = $this->em->createQueryBuilder();
 
-            $tableAlias = $this->mappedEntityField ? 't' : 'target';
-            $fieldAlias = $this->mappedEntityField ? $this->mappedEntityField : $this->field;
+                if($this->mappedEntity) {
+                    $qbSb = $this->em->createQueryBuilder();
+                    $qb
+                        ->select('s')
+                        ->from($this->mappedEntity, 's')
+                        ->where($qb->expr()->in(
+                            's.id',
+                            $qbSb
+                                ->select("ss.id")
+                                ->from($this->class, 'o')
+                                ->leftJoin("o.{$this->field}", 'ss')
+                                ->where($qbSb->expr()->eq('o.id', $entity->getId()))
+                                ->getDQL()
+                        ))
+                        ->setMaxResults(1);
+                    $status = $qb->getQuery()->getOneOrNullResult();
+                }
+                else {
+                    $tableAlias = 'target';
+                    $fieldAlias = $this->field;
 
-            $qb
-                ->select("target.{$fieldAlias} as status")
-                ->from($this->class, $tableAlias);
+                    $qb
+                        ->select("target.{$fieldAlias} as status")
+                        ->from($this->class, $tableAlias)
+                        ->where($qb->expr()->eq('target.id', ':id'))
+                        ->setParameter(':id', $entity->getId());
 
-            if($this->mappedEntityField) {
-                $qb
-                    ->leftJoin("t.{$this->field}", 'target')
-                    ->where($qb->expr()->eq('t.id', ':id'))
-                    ->setParameter(':id', $entity->getId());
-            } else {
-                $qb
-                    ->where($qb->expr()->eq('target.id', ':id'))
-                    ->setParameter(':id', $entity->getId());
+                    $status = $qb->getQuery()->getOneOrNullResult();
+                    if($status) {
+                        $status = $status['status'];
+                    }
+                }
+
+                $from = $status;
+                $to = $this->getEntityField($entity, $this->field);
             }
-
-            $status = $qb->getQuery()->getOneOrNullResult();
-            if($status) {
-                $status = $status['status'];
+            else {
+                $to = $this->getEntityField($entity, $this->field);
             }
+            $this->entityMovements[$entityId] = new FlowMovement($from, $to);
+        }
 
-            $movement->setFrom($status);
-            $movement->setTo($this->getEntityStatus($entity));
-        }
-        else {
-            $movement->setTo($this->getEntityStatus($entity));
-        }
-        return $movement;
+        return $this->entityMovements[$entityId];
     }
 
     /**
@@ -190,10 +245,16 @@ class FlowManager
 
     private function execute($entity)
     {
-        $statusMovement = $this->getFlowManager()->getMovement($entity);
+        $statusMovement = $this->getMovement($entity);
+
+        /** @var $flow \RedCode\Flow\Item\IFlow */
+        $flow = $this->getFlow($entity);
+        if($flow->getRoles() !== false && !count(array_intersect($this->securityContext->getToken()->getUser()->getRoles(), $flow->getRoles()))) {
+            throw new AccessDeniedException('Access denied to change status');
+        }
 
         // execute current flow into entity
-        $this->getFlowManager()->getFlow($entity)->execute($entity, $statusMovement);
+        $flow->execute($entity, $statusMovement);
 
         $this->em->persist($entity);
 
@@ -239,5 +300,35 @@ class FlowManager
         if(ltrim(get_class($entity), "\\") != $this->class) {
             throw new \Exception('Entity must be instance of ' . $this->class);
         }
+    }
+
+    public function getMovementsArray($role = null)
+    {
+        $result = array ();
+        /** @var $flow \RedCode\Flow\Item\IFlow */
+        foreach($this->flows as $flow) {
+
+            foreach($flow->getMovements() as $movement) {
+                $result[(string)$movement] = array(
+                    'from'=> array (
+                        'id' => $movement->getFrom(),
+                        'name' => $this->getName($movement->getFrom())
+                    ),
+                    'to'=> array (
+                        'id' => $movement->getTo(),
+                        'name' => $this->getName($movement->getTo())
+                    )
+                );
+            }
+        }
+
+    }
+
+    private function getName($status)
+    {
+        if($this->getStatusNameFunction) {
+            return call_user_func($this->getStatusNameFunction, $status);
+        }
+        throw new \Exception('For get status name you should set $getStatusNameFunction in __construct');
     }
 }
