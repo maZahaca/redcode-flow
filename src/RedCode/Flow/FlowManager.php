@@ -218,6 +218,14 @@ class FlowManager
         if(count($entities) == 1 && is_array($entities[0])) {
             $entities = $entities[0];
         }
+        $ignoreRights = false;
+        if(count($entities) >= 2) {
+            $ignoreRights = end($entities);
+            if(is_bool($ignoreRights)) {
+                array_pop($entities);
+            }
+            reset($entities);
+        }
 
         $upperTransaction = $this->em->getConnection()->isTransactionActive();
 
@@ -228,7 +236,7 @@ class FlowManager
 
             foreach($entities as $entity) {
                 $this->validateEntity($entity);
-                $this->execute($entity);
+                $this->execute($entity, $ignoreRights);
             }
 
             $this->em->flush();
@@ -243,13 +251,13 @@ class FlowManager
         return true;
     }
 
-    private function execute($entity)
+    private function execute($entity, $ignoreRights = false)
     {
         $statusMovement = $this->getMovement($entity);
 
         /** @var $flow \RedCode\Flow\Item\IFlow */
         $flow = $this->getFlow($entity);
-        if($flow->getRoles() !== false && !count(array_intersect($this->securityContext->getToken()->getUser()->getRoles(), $flow->getRoles()))) {
+        if(!$ignoreRights && $flow->getRoles() !== false && !count(array_intersect($this->securityContext->getToken()->getUser()->getRoles(), $flow->getRoles()))) {
             throw new AccessDeniedException('Access denied to change status');
         }
 
@@ -309,19 +317,21 @@ class FlowManager
         foreach($this->flows as $flow) {
 
             foreach($flow->getMovements() as $movement) {
-                $result[(string)$movement] = array(
-                    'from'=> array (
-                        'id' => $movement->getFrom(),
-                        'name' => $this->getName($movement->getFrom())
-                    ),
-                    'to'=> array (
-                        'id' => $movement->getTo(),
-                        'name' => $this->getName($movement->getTo())
-                    )
-                );
+                if($role === null || $flow->getRoles() === false || in_array($role, $flow->getRoles())) {
+                    $result[(string)$movement] = array(
+                        'from'=> array (
+                            'id' => $movement->getFrom(),
+                            'name' => $this->getName($movement->getFrom())
+                        ),
+                        'to'=> array (
+                            'id' => $movement->getTo(),
+                            'name' => $this->getName($movement->getTo())
+                        )
+                    );
+                }
             }
         }
-
+        return $result;
     }
 
     private function getName($status)
