@@ -310,14 +310,13 @@ class FlowManager
         }
     }
 
-    public function getMovementsArray($role = null)
+    public function getMovementsArray($role = null, $currentStatus = null)
     {
         $result = array ();
         /** @var $flow \RedCode\Flow\Item\IFlow */
         foreach($this->flows as $flow) {
-
             foreach($flow->getMovements() as $movement) {
-                if($role === null || $flow->getRoles() === false || in_array($role, $flow->getRoles())) {
+                if( ($role === null || $flow->getRoles() === false || in_array($role, $flow->getRoles())) || ($currentStatus === null || $movement->getFrom() == (string)$currentStatus) ) {
                     $result[(string)$movement] = array(
                         'from'=> array (
                             'id' => $movement->getFrom(),
