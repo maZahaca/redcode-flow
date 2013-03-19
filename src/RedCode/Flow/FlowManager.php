@@ -316,7 +316,7 @@ class FlowManager
         /** @var $flow \RedCode\Flow\Item\IFlow */
         foreach($this->flows as $flow) {
             foreach($flow->getMovements() as $movement) {
-                if( ($role === null || $flow->getRoles() === false || in_array($role, $flow->getRoles())) || ($currentStatus === null || $movement->getFrom() == (string)$currentStatus) ) {
+                if( ($role === null || $flow->getRoles() === false || in_array($role, $flow->getRoles())) && ($currentStatus === null || $movement->getFrom() == (string)$currentStatus) ) {
                     $result[(string)$movement] = array(
                         'from'=> array (
                             'id' => $movement->getFrom(),
