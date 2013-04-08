@@ -18,10 +18,16 @@ class FlowMovement
      */
     private $to;
 
-    public function __construct($from = null, $to = null)
+    /**
+     * @var null|\Closure
+     */
+    private $callback = null;
+
+    public function __construct($from = null, $to = null, $callback = null)
     {
-        $this->from = $from;
-        $this->to = $to;
+        $this->from     = $from;
+        $this->to       = $to;
+        $this->callback = $callback;
     }
 
     public function __toString()
@@ -43,5 +49,13 @@ class FlowMovement
     public function getTo()
     {
         return $this->to;
+    }
+
+    public function isAllowed($entity, $entityMovement = null)
+    {
+        if($this->callback !== null) {
+            return call_user_func($this->callback, $entity, $entityMovement);
+        }
+        return true;
     }
 }

@@ -154,7 +154,7 @@ class FlowManager
     {
         $this->validateEntity($entity);
         $from = $to = null;
-        $entityId = spl_object_hash($entity);
+        $entityId = spl_object_hash($entity) . $this->getEntityStatus($entity);
 
         if(!isset($this->entityMovements[$entityId])) {
             if($entity->getId()) {
@@ -310,13 +310,21 @@ class FlowManager
         }
     }
 
-    public function getMovementsArray($role = null, $currentStatus = null)
+    public function getMovementsArray($role = null, $entity = null)
     {
         $result = array ();
+
+        $currentStatus = $entity !== null ? $this->getEntityStatus($entity) : null;
+        $entityMovement = $entity !== null ? $this->getMovement($entity) : null;
+
         /** @var $flow \RedCode\Flow\Item\IFlow */
         foreach($this->flows as $flow) {
             foreach($flow->getMovements() as $movement) {
-                if( ($role === null || $flow->getRoles() === false || in_array($role, $flow->getRoles())) && ($currentStatus === null || $movement->getFrom() == (string)$currentStatus) ) {
+                if(
+                    ($role === null || $flow->getRoles() === false || in_array($role, $flow->getRoles())) &&
+                    ($currentStatus === null || $movement->getFrom() == (string)$currentStatus) &&
+                    ($entity === null || $movement->isAllowed($entity, $entityMovement))
+                  ) {
                     $result[(string)$movement] = array(
                         'from'=> array (
                             'id' => $movement->getFrom(),
