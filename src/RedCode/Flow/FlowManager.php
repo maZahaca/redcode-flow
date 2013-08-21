@@ -57,11 +57,6 @@ class FlowManager
     private $getStatusNameFunction;
 
     /**
-     * @var array
-     */
-    private $entityMovements = array();
-
-    /**
      * @var \Symfony\Component\Security\Core\SecurityContext
      */
     protected $securityContext;
@@ -138,8 +133,18 @@ class FlowManager
     public function getFlow($entity)
     {
         $movement = $this->getMovement($entity);
-        if(array_key_exists((string)$movement, $this->allowMovements))
-            return $this->allowMovements[(string)$movement];
+        $movementString = (string)$movement;
+        if(array_key_exists($movementString, $this->allowMovements))
+            return $this->allowMovements[$movementString];
+
+        $fromAnyToConcrete = preg_replace('/^([^-]+)-([^-]+)$/i', '*-$2', $movementString);
+        if(array_key_exists($fromAnyToConcrete, $this->allowMovements))
+            return $this->allowMovements[$fromAnyToConcrete];
+
+        $fromConcreteToAny = preg_replace('/^([^-]+)-([^-]+)$/i', '$1-*', $movementString);
+        if(array_key_exists($fromAnyToConcrete, $this->allowMovements))
+            return $this->allowMovements[$fromConcreteToAny];
+
         if((string)$movement->getFrom() == (string)$movement->getTo()) {
             return $this->allowMovements['empty'];
         }
@@ -154,55 +159,50 @@ class FlowManager
     {
         $this->validateEntity($entity);
         $from = $to = null;
-        $entityId = spl_object_hash($entity) . $this->getEntityStatus($entity);
 
-        if(!isset($this->entityMovements[$entityId])) {
-            if($entity->getId()) {
-                $qb = $this->em->createQueryBuilder();
+        if($entity->getId()) {
+            $qb = $this->em->createQueryBuilder();
 
-                if($this->mappedEntity) {
-                    $qbSb = $this->em->createQueryBuilder();
-                    $qb
-                        ->select('s')
-                        ->from($this->mappedEntity, 's')
-                        ->where($qb->expr()->in(
-                            's.id',
-                            $qbSb
-                                ->select("ss.id")
-                                ->from($this->class, 'o')
-                                ->leftJoin("o.{$this->field}", 'ss')
-                                ->where($qbSb->expr()->eq('o.id', $entity->getId()))
-                                ->getDQL()
-                        ))
-                        ->setMaxResults(1);
-                    $status = $qb->getQuery()->getOneOrNullResult();
-                }
-                else {
-                    $tableAlias = 'target';
-                    $fieldAlias = $this->field;
-
-                    $qb
-                        ->select("target.{$fieldAlias} as status")
-                        ->from($this->class, $tableAlias)
-                        ->where($qb->expr()->eq('target.id', ':id'))
-                        ->setParameter(':id', $entity->getId());
-
-                    $status = $qb->getQuery()->getOneOrNullResult();
-                    if($status) {
-                        $status = $status['status'];
-                    }
-                }
-
-                $from = $status;
-                $to = $this->getEntityField($entity, $this->field);
+            if($this->mappedEntity) {
+                $qbSb = $this->em->createQueryBuilder();
+                $qb
+                    ->select('s')
+                    ->from($this->mappedEntity, 's')
+                    ->where($qb->expr()->in(
+                        's.id',
+                        $qbSb
+                            ->select("ss.id")
+                            ->from($this->class, 'o')
+                            ->leftJoin("o.{$this->field}", 'ss')
+                            ->where($qbSb->expr()->eq('o.id', $entity->getId()))
+                            ->getDQL()
+                    ))
+                    ->setMaxResults(1);
+                $status = $qb->getQuery()->getOneOrNullResult();
             }
             else {
-                $to = $this->getEntityField($entity, $this->field);
-            }
-            $this->entityMovements[$entityId] = new FlowMovement($from, $to);
-        }
+                $tableAlias = 'target';
+                $fieldAlias = $this->field;
 
-        return $this->entityMovements[$entityId];
+                $qb
+                    ->select("target.{$fieldAlias} as status")
+                    ->from($this->class, $tableAlias)
+                    ->where($qb->expr()->eq('target.id', ':id'))
+                    ->setParameter(':id', $entity->getId());
+
+                $status = $qb->getQuery()->getOneOrNullResult();
+                if($status) {
+                    $status = $status['status'];
+                }
+            }
+
+            $from = $status;
+            $to = $this->getEntityField($entity, $this->field);
+        }
+        else {
+            $to = $this->getEntityField($entity, $this->field);
+        }
+        return new FlowMovement($from, $to);
     }
 
     /**
@@ -322,7 +322,7 @@ class FlowManager
             foreach($flow->getMovements() as $movement) {
                 if(
                     ($role === null || $flow->getRoles() === false || in_array($role, $flow->getRoles())) &&
-                    ($currentStatus === null || $movement->getFrom() == (string)$currentStatus) &&
+                    ($currentStatus === null || $movement->getFrom() == '*' || $movement->getFrom() == (string)$currentStatus) &&
                     ($entity === null || $movement->isAllowed($entity, $entityMovement))
                   ) {
                     $result[(string)$movement] = array(

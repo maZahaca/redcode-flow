@@ -8,6 +8,8 @@ namespace RedCode\Flow;
 
 class FlowMovement
 {
+    CONST MOVEMENT_REGEX = '^([^-]+)-([^-]+)$';
+
     /**
      * @var string|object
      */
