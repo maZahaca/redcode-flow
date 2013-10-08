@@ -305,7 +305,7 @@ class FlowManager
      */
     private function validateEntity($entity)
     {
-        if(ltrim(get_class($entity), "\\") != $this->class) {
+        if(!($entity instanceof $this->class)) {
             throw new \Exception('Entity must be instance of ' . $this->class);
         }
     }
