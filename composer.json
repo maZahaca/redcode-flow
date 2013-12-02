@@ -13,7 +13,9 @@
     ],
     "require": {
         "php": ">=5.4.4",
-        "symfony/framework-bundle": ">=2.0,<2.3-dev"
+        "symfony/symfony": ">=2.0",
+        "doctrine/orm": ">=2.3.2",
+        "doctrine/dbal": ">=2.3.2"
     },
     "autoload": {
         "psr-0": { "RedCode\\Flow": "src/" }
