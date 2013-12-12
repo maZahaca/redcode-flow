@@ -3,13 +3,14 @@
 /**
  * @author maZahaca
  */
-namespace RedCode\Flow\Annotation\Status;
+
+namespace RedCode\Flow\Annotation;
 
 /**
  * @Annotation
  * @Target({"PROPERTY","ANNOTATION"})
  */
-class StatusEntity
+class Status
 {
     public static function className()
     {

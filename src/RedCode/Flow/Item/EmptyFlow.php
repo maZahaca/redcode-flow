@@ -14,7 +14,7 @@ class EmptyFlow extends BaseFlow
     }
 
     /**
-     * @inheritDoc
+     * @inheritdoc
      */
     public function execute($entity, FlowMovement $movement)
     {

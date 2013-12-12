@@ -6,15 +6,16 @@
  */
 namespace RedCode\Flow\Item;
 
+use RedCode\Flow\FlowMovement;
+
 interface IFlow
 {
     /**
      * Execute actions on entity by current flow
      * @param object $entity
-     * @param \RedCode\Flow\FlowMovement $movement
-     * @return object $entity
+     * @param FlowMovement $movement
      */
-    public function execute($entity, \RedCode\Flow\FlowMovement $movement);
+    public function execute($entity, FlowMovement $movement);
 
     /**
      * Get allowed movement for flow

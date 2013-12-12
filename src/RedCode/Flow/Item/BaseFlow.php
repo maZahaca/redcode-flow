@@ -4,8 +4,6 @@
  */
 namespace RedCode\Flow\Item;
 
-use RedCode\Flow\FlowMovement;
-
 abstract class BaseFlow implements IFlow
 {
     /**
