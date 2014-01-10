@@ -4,6 +4,8 @@
  */
 namespace RedCode\Flow\Item;
 
+use RedCode\Flow\Movement;
+
 abstract class BaseFlow implements IFlow
 {
     /**
@@ -13,6 +15,7 @@ abstract class BaseFlow implements IFlow
     protected $movements = array ();
 
     /**
+     * Get allowed movements to flow
      * @var array|bool
      */
     protected $roles = array ();
@@ -23,18 +26,19 @@ abstract class BaseFlow implements IFlow
     }
 
     /**
-     * @param array $movements
-     */
-    protected function setMovements($movements)
-    {
-        $this->movements = $movements;
-    }
-
-    /**
+     * Return array of user roles or false if user check is switched off
      * @return array|bool
      */
     public function getRoles()
     {
         return $this->roles;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    public function postExecute($entity, Movement $movement)
+    {
+
     }
 }

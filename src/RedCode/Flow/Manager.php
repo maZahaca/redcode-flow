@@ -2,9 +2,11 @@
 
 namespace RedCode\Flow;
 
-use Doctrine\Common\Annotations\AnnotationReader;
+use Doctrine\Common\Annotations\Reader;
 use Doctrine\ORM\EntityManager;
+use RedCode\Flow\Exception\EntityUnsupportedException;
 use RedCode\Flow\Exception\MovementUnsupportedException;
+use RedCode\Flow\Item\EmptyFlow;
 use RedCode\Flow\Item\IFlow;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
 use Symfony\Component\Security\Core\SecurityContextInterface;
@@ -36,7 +38,7 @@ class Manager
     private $class;
 
     /**
-     * @var AnnotationReader
+     * @var Reader
      */
     private $annotationReader;
 
@@ -46,25 +48,32 @@ class Manager
     private $property;
 
     /**
-     * @var \Symfony\Component\Security\Core\SecurityContext
+     * @var SecurityContextInterface
      */
     protected $securityContext;
 
     /**
+     * @var \Closure
+     */
+    protected $nameResolver;
+
+    /**
      * @param EntityManager $em
-     * @param AnnotationReader $reader
+     * @param Reader $reader
      * @param string $className
      * @param IFlow[] $flows
      * @param SecurityContextInterface|null $securityContext
+     * @param \Closure|null $nameResolver
      * @throws \Exception
      */
-    public function __construct(EntityManager $em, AnnotationReader $reader, $className, $flows, $securityContext = null)
+    public function __construct(EntityManager $em, Reader $reader, $className, $flows, $securityContext = null, \Closure $nameResolver = null)
     {
         $this->em                       = $em;
         $this->class                    = ltrim($className, "\\");
         $this->securityContext          = $securityContext;
         $this->annotationReader         = $reader;
         $this->property                 = new PropertyInfo($className, $em, $reader);
+        $this->nameResolver             = $nameResolver ? $nameResolver : (function ($name) { return $name; });
 
         $index = 0;
         /** @var \RedCode\Flow\Item\IFlow $service */
@@ -74,47 +83,57 @@ class Manager
 
             $this->flows[$index] = $service;
             foreach($service->getMovements() as $move) {
-                $this->allowMovements[(string)$move] = &$this->flows[$index];
+                $this->allowMovements[$this->getMovementKey($move)] = &$this->flows[$index];
             }
             $index++;
         }
         $this->allowMovements['empty'] = new EmptyFlow();
     }
 
-
+    private function getMovementKey(Movement $movement)
+    {
+        return sprintf('%s-%s', $this->property->getPropertyValue($movement->getFrom()), $this->property->getPropertyValue($movement->getTo()));
+    }
 
 
     /**
      * Get executive flow
-     * @param object $entity
-     * @throws MovementUnsupportedException
+     * @param object|Movement $object
+     * @throws Exception\MovementUnsupportedException
      * @return IFlow
      */
-    public function getFlow($entity)
+    public function getFlow($object)
     {
-        $movement = $this->getMovement($entity);
+        $movement = $object;
+        if(!($movement instanceof Movement)) {
+            $this->validateEntity($object);
+            $movement = $this->getMovement($object);
+        }
 
-        $movementString = (string)$movement;
-        if(array_key_exists($movementString, $this->allowMovements))
-            return $this->allowMovements[$movementString];
+        $movementKey = $this->getMovementKey($movement);
+        if(array_key_exists($movementKey, $this->allowMovements))
+            return $this->allowMovements[$movementKey];
 
-        $fromAnyToConcrete = preg_replace('/^([^-]+)-([^-]+)$/i', '*-$2', $movementString);
-        if(array_key_exists($fromAnyToConcrete, $this->allowMovements))
-            return $this->allowMovements[$fromAnyToConcrete];
-
-        $fromConcreteToAny = preg_replace('/^([^-]+)-([^-]+)$/i', '$1-*', $movementString);
-        if(array_key_exists($fromAnyToConcrete, $this->allowMovements))
-            return $this->allowMovements[$fromConcreteToAny];
-
-        if((string)$movement->getFrom() == (string)$movement->getTo()) {
+        if($this->property->getPropertyValue($movement->getFrom()) == $this->property->getPropertyValue($movement->getTo())) {
             return $this->allowMovements['empty'];
         }
+
+        $fromAnyToConcrete = preg_replace('/^([^-]+)-([^-]+)$/i', '*-$2', $movementKey);
+        if(array_key_exists($fromAnyToConcrete, $this->allowMovements)) {
+            return $this->allowMovements[$fromAnyToConcrete];
+        }
+
+        $fromConcreteToAny = preg_replace('/^([^-]+)-([^-]+)$/i', '$1-*', $movementKey);
+        if(array_key_exists($fromAnyToConcrete, $this->allowMovements)) {
+            return $this->allowMovements[$fromConcreteToAny];
+        }
+
         throw new MovementUnsupportedException($movement);
     }
 
     /**
      * @param object $entity
-     * @return FlowMovement
+     * @return Movement
      */
     public function getMovement($entity)
     {
@@ -165,7 +184,7 @@ class Manager
         else {
             $to = $this->property->getPropertyValue($entity);
         }
-        return new FlowMovement($from, $to);
+        return new Movement($from, $to);
     }
 
     /**
@@ -175,17 +194,15 @@ class Manager
      * ->process($entity1 [, ..., $entityN])
      * @throws \Exception
      */
-    public function process()
+    public function process($entity)
     {
-        $entities = func_get_args();
         $this->em->getConnection()->beginTransaction();
 
+        $flowMovement = $this->getMovement($entity);
+        $flow = $this->getFlow($flowMovement);
         try {
-
-            foreach($entities as $entity) {
-                $this->validateEntity($entity);
-                $this->execute($entity);
-            }
+            $this->validateEntity($entity);
+            $this->executeFlow($entity);
 
             $this->em->flush();
             $this->em->getConnection()->commit();
@@ -194,15 +211,16 @@ class Manager
             $this->em->getConnection()->rollback();
             throw $ex;
         }
+
+        $flow->postExecute($entity, $flowMovement);
         return true;
     }
 
-    public function execute($entity)
+    public function executeFlow($entity)
     {
-        $statusMovement = $this->getMovement($entity);
-
+        $movement = $this->getMovement($entity);
         /** @var $flow IFlow */
-        $flow = $this->getFlow($entity);
+        $flow = $this->getFlow($movement);
         if(
             $flow->getRoles() !== false &&
             $this->securityContext &&
@@ -216,10 +234,8 @@ class Manager
         ) {
             throw new AccessDeniedException('Access denied to change status');
         }
-
         // execute current flow into entity
-        $flow->execute($entity, $statusMovement);
-
+        $flow->execute($entity, $movement);
         $this->em->persist($entity);
 
         return $entity;
@@ -227,12 +243,12 @@ class Manager
 
     /**
      * @param object $entity
-     * @throws \Exception
+     * @throws EntityUnsupportedException
      */
     private function validateEntity($entity)
     {
         if(!$this->isSupports($entity)) {
-            throw new \Exception('Entity must be instance of ' . $this->class);
+            throw new EntityUnsupportedException($entity);
         }
     }
 
@@ -243,21 +259,23 @@ class Manager
         $currentStatus = $entity !== null ? $this->property->getPropertyValue($entity) : false;
         $entityMovement = $entity !== null ? $this->getMovement($entity) : false;
 
+        $nameResolver = $this->nameResolver;
+
         foreach($this->flows as $flow) {
             foreach($flow->getMovements() as $movement) {
                 if(
                     ($role === null || $flow->getRoles() === false || in_array($role, $flow->getRoles())) &&
-                    ($currentStatus === false || $movement->getFrom() == '*' || $movement->getFrom() == (string)$currentStatus) &&
+                    ($currentStatus === false || $movement->getFrom() == '*' || $movement->getFrom() == $this->property->getPropertyValue($currentStatus)) &&
                     ($entity === null || $movement->isAllowed($entity, $entityMovement))
                 ) {
-                    $result[(string)$movement] = array(
+                    $result[$this->getMovementKey($movement)] = array(
                         'from'=> array (
                             'id' => $movement->getFrom(),
-                            'name' => $this->getName($movement->getFrom())
+                            'name' => $nameResolver($movement->getFrom())
                         ),
                         'to'=> array (
                             'id' => $movement->getTo(),
-                            'name' => $this->getName($movement->getTo())
+                            'name' => $nameResolver($movement->getTo())
                         )
                     );
                 }
@@ -266,17 +284,8 @@ class Manager
         return $result;
     }
 
-    private function getName($status)
-    {
-        if($this->getStatusNameFunction) {
-            return call_user_func($this->getStatusNameFunction, $status);
-        }
-        throw new \Exception('For get status name you should set $getStatusNameFunction in __construct');
-    }
-
     public function isSupports($entity)
     {
-        $className = $this->class;
-        return $entity instanceof $className;
+        return $entity instanceof $this->class;
     }
 }

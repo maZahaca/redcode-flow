@@ -1,7 +1,9 @@
 <?php
 
 namespace RedCode\Flow;
-use Doctrine\Common\Annotations\AnnotationReader;
+
+
+use Doctrine\Common\Annotations\Reader;
 use Doctrine\ORM\EntityManager;
 use RedCode\Flow\Annotation\Status;
 
@@ -20,7 +22,7 @@ class PropertyInfo
     /** @var PropertyInfo|null */
     private $child;
 
-    public function __construct($className, EntityManager $em, AnnotationReader $annotationReader)
+    public function __construct($className, EntityManager $em, Reader $annotationReader)
     {
         $this->class = $className;
         $this->reflection = new \ReflectionClass($this->class);
@@ -45,7 +47,7 @@ class PropertyInfo
                     $this->metadata = $metadata->getFieldMapping($this->property);
                 } else if($metadata->hasAssociation($this->property)) {
                     $this->metadata = $metadata->getAssociationMapping($this->property);
-                    $this->child    = new self($this->metadata->targetEntity, $em, $annotationReader);
+                    $this->child    = new self($this->metadata['targetEntity'], $em, $annotationReader);
                 }
             }
         }
@@ -96,12 +98,30 @@ class PropertyInfo
 
     public function getPropertyValue($object)
     {
-        return $this->reflection->getProperty($this->property)->getValue($object);
+        if(is_scalar($object)) {
+            return (string)$object;
+        }
+        else if(is_object($object) && $this->reflection->isInstance($object)) {
+            $getter = 'get' . ucfirst(strtolower($this->property));
+            if($this->reflection->hasMethod($getter) && ($getter = $this->reflection->getMethod($getter))) {
+                return $getter->invoke($object);
+            }
+        }
+        else if($this->child) {
+            return $this->child->getPropertyValue($object);
+        }
+        return null;
     }
 
     public function getIdentifierValue($object)
     {
-        return $this->reflection->getProperty($this->identifier)->getValue($object);
+        if(is_object($object) && $this->reflection->isInstance($object)) {
+            $getter = 'get' . ucfirst(strtolower($this->identifier));
+            if($this->reflection->hasMethod($getter) && ($getter = $this->reflection->getMethod($getter))) {
+                return $getter->invoke($object);
+            }
+        }
+        return null;
     }
 }
  

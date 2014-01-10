@@ -1,15 +1,9 @@
 <?php
-/**
- * User: matrlx
- * Date: 9/14/12
- * Time: 5:03 PM
- */
+
 namespace RedCode\Flow;
 
-class FlowMovement
+class Movement
 {
-    CONST MOVEMENT_REGEX = '^([^-]+)-([^-]+)$';
-
     /**
      * @var string|object
      */
@@ -25,16 +19,16 @@ class FlowMovement
      */
     private $callback = null;
 
+    /**
+     * @param mixed $from
+     * @param mixed $to
+     * @param \Closure|null $callback
+     */
     public function __construct($from = null, $to = null, $callback = null)
     {
         $this->from     = $from;
         $this->to       = $to;
         $this->callback = $callback;
-    }
-
-    public function __toString()
-    {
-        return "{$this->from}-{$this->to}";
     }
 
     /**
