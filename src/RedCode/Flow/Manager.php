@@ -194,7 +194,7 @@ class Manager
      * ->process($entity1 [, ..., $entityN])
      * @throws \Exception
      */
-    public function process($entity)
+    public function process($entity, $ignoreRights = false)
     {
         $this->em->getConnection()->beginTransaction();
 
@@ -202,7 +202,7 @@ class Manager
         $flow = $this->getFlow($flowMovement);
         try {
             $this->validateEntity($entity);
-            $this->executeFlow($entity);
+            $this->executeFlow($entity, $ignoreRights);
 
             $this->em->flush();
             $this->em->getConnection()->commit();
@@ -216,12 +216,13 @@ class Manager
         return true;
     }
 
-    public function executeFlow($entity)
+    public function executeFlow($entity, $ignoreRights = false)
     {
         $movement = $this->getMovement($entity);
         /** @var $flow IFlow */
         $flow = $this->getFlow($movement);
         if(
+            !$ignoreRights &&
             $flow->getRoles() !== false &&
             $this->securityContext &&
             $this->securityContext->getToken() &&
